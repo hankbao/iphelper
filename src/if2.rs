@@ -24,8 +24,8 @@ impl MibIfRow2 {
         Ok(row)
     }
 
-    // `get` retrieves information for the specified interface on the local computer.
-    fn get(&mut self) -> io::Result<()> {
+    /// `get` retrieves information for the specified interface on the local computer.
+    pub fn get(&mut self) -> io::Result<()> {
         crate::cvt_dword(unsafe { GetIfEntry2(&mut self.inner) })
     }
 }

@@ -28,8 +28,8 @@ impl MibIpInterfaceRow {
         Ok(row)
     }
 
-    // `get` retrieves IP information for the specified interface on the local computer.
-    fn get(&mut self) -> io::Result<()> {
+    /// `get` retrieves IP information for the specified interface on the local computer.
+    pub fn get(&mut self) -> io::Result<()> {
         crate::cvt_dword(unsafe { GetIpInterfaceEntry(&mut self.inner) })?;
 
         // Patch that fixes SitePrefixLength issue
