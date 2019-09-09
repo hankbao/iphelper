@@ -8,7 +8,7 @@ use winapi::shared::netioapi::{
     MIB_NOTIFICATION_TYPE, PMIB_IPFORWARD_ROW2, PMIB_IPFORWARD_TABLE2,
 };
 use winapi::shared::ntdef::{HANDLE, PVOID};
-use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_UNSPEC};
+use winapi::shared::ws2def::ADDRESS_FAMILY;
 
 pub struct IpForward2 {
     pub inner: MIB_IPFORWARD_ROW2,
@@ -28,6 +28,14 @@ impl IpForward2 {
     /// `delete` deletes an IP route entry on the local computer.
     pub fn delete(&self) -> io::Result<()> {
         crate::cvt_dword(unsafe { DeleteIpForwardEntry2(&self.inner) })
+    }
+
+    /// `notify_change` registers to be notified for changes to IP route entries on a local computer.
+    pub fn notify_change<F>(family: ADDRESS_FAMILY, callback: F) -> io::Result<RouteChange2Notifier>
+    where
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &IpForward2),
+    {
+        RouteChange2Notifier::new(family, callback)
     }
 }
 
@@ -81,7 +89,7 @@ pub struct RouteChange2Notifier {
 }
 
 impl RouteChange2Notifier {
-    pub fn new<F>(callback: F) -> io::Result<RouteChange2Notifier>
+    fn new<F>(family: ADDRESS_FAMILY, callback: F) -> io::Result<RouteChange2Notifier>
     where
         F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &IpForward2),
     {
@@ -92,7 +100,7 @@ impl RouteChange2Notifier {
         let mut handle = ptr::null_mut();
         crate::cvt_dword(unsafe {
             NotifyRouteChange2(
-                AF_UNSPEC as u16,
+                family as u16,
                 Some(route_change2_callback),
                 context.as_ptr() as *mut _,
                 0,

@@ -9,7 +9,7 @@ use winapi::shared::netioapi::{
     PMIB_IPINTERFACE_ROW,
 };
 use winapi::shared::ntdef::{HANDLE, PVOID};
-use winapi::shared::ws2def::{AF_INET, AF_INET6, AF_UNSPEC};
+use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_INET, AF_INET6};
 
 pub struct IpInterface {
     pub inner: MIB_IPINTERFACE_ROW,
@@ -59,6 +59,18 @@ impl IpInterface {
     pub fn set(&mut self) -> io::Result<()> {
         crate::cvt_dword(unsafe { SetIpInterfaceEntry(&mut self.inner) })
     }
+
+    /// `notify_change` registers to be notified for changes to all IP interfaces, IPv4 interfaces,
+    /// or IPv6 interfaces on a local computer.
+    pub fn notify_change<F>(
+        family: ADDRESS_FAMILY,
+        callback: F,
+    ) -> io::Result<IpInterfaceChangeNotifier>
+    where
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &IpInterface),
+    {
+        IpInterfaceChangeNotifier::new(family, callback)
+    }
 }
 
 type IpInterfaceChangeContext = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &IpInterface)>;
@@ -69,7 +81,7 @@ pub struct IpInterfaceChangeNotifier {
 }
 
 impl IpInterfaceChangeNotifier {
-    pub fn new<F>(callback: F) -> io::Result<IpInterfaceChangeNotifier>
+    fn new<F>(family: ADDRESS_FAMILY, callback: F) -> io::Result<IpInterfaceChangeNotifier>
     where
         F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &IpInterface),
     {
@@ -80,7 +92,7 @@ impl IpInterfaceChangeNotifier {
         let mut handle = ptr::null_mut();
         crate::cvt_dword(unsafe {
             NotifyIpInterfaceChange(
-                AF_UNSPEC as u16,
+                family as u16,
                 Some(ip_interface_callback),
                 context.as_ptr() as *mut _,
                 0,

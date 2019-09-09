@@ -9,14 +9,15 @@ use winapi::shared::netioapi::{
     PMIB_UNICASTIPADDRESS_TABLE,
 };
 use winapi::shared::ntdef::{HANDLE, PVOID};
-use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_UNSPEC};
+use winapi::shared::ws2def::ADDRESS_FAMILY;
 
 pub struct UnicastIpAddress {
     pub inner: MIB_UNICASTIPADDRESS_ROW,
 }
 
 impl UnicastIpAddress {
-    /// `new` initializes a MibUnicastIPAddressRow structure with default values for a unicast IP address entry on the local computer.
+    /// `new` initializes a MibUnicastIPAddressRow structure with default values for a unicast IP
+    ///  address entry on the local computer.
     pub fn new() -> Self {
         UnicastIpAddress::default()
     }
@@ -29,6 +30,18 @@ impl UnicastIpAddress {
     /// `delete` deletes an existing unicast IP address entry on the local computer.
     pub fn delete(&self) -> io::Result<()> {
         crate::cvt_dword(unsafe { DeleteUnicastIpAddressEntry(&self.inner) })
+    }
+
+    /// `notify_change` registers to be notified for changes to all unicast IP interfaces, unicast
+    /// IPv4 addresses, or unicast IPv6 addresses on a local computer.
+    pub fn notify_change<F>(
+        family: ADDRESS_FAMILY,
+        callback: F,
+    ) -> io::Result<UnicastIpAddressChangeNotifier>
+    where
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &UnicastIpAddress),
+    {
+        UnicastIpAddressChangeNotifier::new(family, callback)
     }
 }
 
@@ -82,7 +95,7 @@ pub struct UnicastIpAddressChangeNotifier {
 }
 
 impl UnicastIpAddressChangeNotifier {
-    pub fn new<F>(callback: F) -> io::Result<UnicastIpAddressChangeNotifier>
+    fn new<F>(family: ADDRESS_FAMILY, callback: F) -> io::Result<UnicastIpAddressChangeNotifier>
     where
         F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &UnicastIpAddress),
     {
@@ -93,7 +106,7 @@ impl UnicastIpAddressChangeNotifier {
         let mut handle = ptr::null_mut();
         crate::cvt_dword(unsafe {
             NotifyUnicastIpAddressChange(
-                AF_UNSPEC as u16,
+                family as u16,
                 Some(unicast_ip_address_callback),
                 context.as_ptr() as *mut _,
                 0,
