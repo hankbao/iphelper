@@ -10,7 +10,6 @@ use winapi::shared::netioapi::{
 use winapi::shared::ntdef::{HANDLE, PVOID};
 use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_UNSPEC};
 
-// #[derive(Default)]
 pub struct IpForward2 {
     pub inner: MIB_IPFORWARD_ROW2,
 }
