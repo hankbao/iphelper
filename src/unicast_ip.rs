@@ -1,13 +1,15 @@
 use std::io;
 use std::mem;
-use std::ptr;
+use std::ptr::{self, NonNull};
 
 use winapi::shared::netioapi::{
-    CreateUnicastIpAddressEntry, DeleteUnicastIpAddressEntry, FreeMibTable,
-    GetUnicastIpAddressTable, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
+    CancelMibChangeNotify2, CreateUnicastIpAddressEntry, DeleteUnicastIpAddressEntry, FreeMibTable,
+    GetUnicastIpAddressTable, InitializeUnicastIpAddressEntry, NotifyUnicastIpAddressChange,
+    MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW, PMIB_UNICASTIPADDRESS_ROW,
     PMIB_UNICASTIPADDRESS_TABLE,
 };
-use winapi::shared::ws2def::ADDRESS_FAMILY;
+use winapi::shared::ntdef::{HANDLE, PVOID};
+use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_UNSPEC};
 
 pub struct MibUnicastIpAddressRow {
     pub inner: MIB_UNICASTIPADDRESS_ROW,
@@ -70,4 +72,61 @@ declare_table_iter! {
     MibUnicastIpAddressTableIter,
     MibUnicastIpAddressRow,
     MIB_UNICASTIPADDRESS_ROW
+}
+
+type UnicastIpAddressChangeContext = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &MibUnicastIpAddressRow)>;
+
+pub struct UnicastIpAddressChangeNotifier {
+    handle: HANDLE,
+    context: NonNull<UnicastIpAddressChangeContext>,
+}
+
+impl UnicastIpAddressChangeNotifier {
+    pub fn new<F>(callback: F) -> io::Result<UnicastIpAddressChangeNotifier>
+    where
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &MibUnicastIpAddressRow),
+    {
+        let callback: UnicastIpAddressChangeContext = Box::new(callback);
+        let context =
+            NonNull::new(Box::into_raw(Box::new(callback))).expect("Box::into_raw returned null");
+
+        let mut handle = ptr::null_mut();
+        crate::cvt_dword(unsafe {
+            NotifyUnicastIpAddressChange(
+                AF_UNSPEC as u16,
+                Some(unicast_ip_address_callback),
+                context.as_ptr() as *mut _,
+                0,
+                &mut handle,
+            )
+        })?;
+
+        Ok(UnicastIpAddressChangeNotifier { handle, context })
+    }
+}
+
+impl Drop for UnicastIpAddressChangeNotifier {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.handle.is_null() {
+                CancelMibChangeNotify2(self.handle);
+            }
+            drop(Box::from_raw(self.context.as_ptr()));
+        }
+    }
+}
+
+#[allow(clippy::cast_ptr_alignment)]
+unsafe extern "system" fn unicast_ip_address_callback(
+    context: PVOID,
+    row: PMIB_UNICASTIPADDRESS_ROW,
+    ntype: MIB_NOTIFICATION_TYPE,
+) {
+    let mut callback: Box<UnicastIpAddressChangeContext> = Box::from_raw(context as *mut _);
+    if !row.is_null() {
+        callback(ntype, &MibUnicastIpAddressRow { inner: *row });
+    }
+
+    // we'll free context in UnicastIpAddressChangeNotifier::drop
+    mem::forget(callback);
 }

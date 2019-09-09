@@ -1,12 +1,14 @@
 use std::io;
 use std::mem;
-use std::ptr;
+use std::ptr::{self, NonNull};
 
 use winapi::shared::netioapi::{
-    CreateIpForwardEntry2, DeleteIpForwardEntry2, FreeMibTable, GetIpForwardTable2,
-    InitializeIpForwardEntry, MIB_IPFORWARD_ROW2, PMIB_IPFORWARD_TABLE2,
+    CancelMibChangeNotify2, CreateIpForwardEntry2, DeleteIpForwardEntry2, FreeMibTable,
+    GetIpForwardTable2, InitializeIpForwardEntry, NotifyRouteChange2, MIB_IPFORWARD_ROW2,
+    MIB_NOTIFICATION_TYPE, PMIB_IPFORWARD_ROW2, PMIB_IPFORWARD_TABLE2,
 };
-use winapi::shared::ws2def::ADDRESS_FAMILY;
+use winapi::shared::ntdef::{HANDLE, PVOID};
+use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_UNSPEC};
 
 // #[derive(Default)]
 pub struct MibIpForwardRow2 {
@@ -70,4 +72,61 @@ declare_table_iter! {
     MibIpForwardTable2Iter,
     MibIpForwardRow2,
     MIB_IPFORWARD_ROW2
+}
+
+type RouteChange2Context = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &MibIpForwardRow2)>;
+
+pub struct RouteChange2Notifier {
+    handle: HANDLE,
+    context: NonNull<RouteChange2Context>,
+}
+
+impl RouteChange2Notifier {
+    pub fn new<F>(callback: F) -> io::Result<RouteChange2Notifier>
+    where
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &MibIpForwardRow2),
+    {
+        let callback: RouteChange2Context = Box::new(callback);
+        let context =
+            NonNull::new(Box::into_raw(Box::new(callback))).expect("Box::into_raw returned null");
+
+        let mut handle = ptr::null_mut();
+        crate::cvt_dword(unsafe {
+            NotifyRouteChange2(
+                AF_UNSPEC as u16,
+                Some(route_change2_callback),
+                context.as_ptr() as *mut _,
+                0,
+                &mut handle,
+            )
+        })?;
+
+        Ok(RouteChange2Notifier { handle, context })
+    }
+}
+
+impl Drop for RouteChange2Notifier {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.handle.is_null() {
+                CancelMibChangeNotify2(self.handle);
+            }
+            drop(Box::from_raw(self.context.as_ptr()));
+        }
+    }
+}
+
+#[allow(clippy::cast_ptr_alignment)]
+unsafe extern "system" fn route_change2_callback(
+    context: PVOID,
+    row: PMIB_IPFORWARD_ROW2,
+    ntype: MIB_NOTIFICATION_TYPE,
+) {
+    let mut callback: Box<RouteChange2Context> = Box::from_raw(context as *mut _);
+    if !row.is_null() {
+        callback(ntype, &MibIpForwardRow2 { inner: *row });
+    }
+
+    // we'll free context in RouteChange2Notifier::drop
+    mem::forget(callback);
 }
