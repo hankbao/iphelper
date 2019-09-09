@@ -43,6 +43,11 @@ macro_rules! declare_table_iter {
     };
 }
 
+pub mod if2;
+pub mod ip_forward;
+pub mod ip_interface;
+pub mod unicast_ip;
+
 fn cvt_dword(d: DWORD) -> io::Result<()> {
     if d == NO_ERROR {
         Ok(())
@@ -50,8 +55,3 @@ fn cvt_dword(d: DWORD) -> io::Result<()> {
         Err(io::Error::from_raw_os_error(d as i32))
     }
 }
-
-pub mod if2;
-pub mod ip_forward;
-pub mod ip_interface;
-pub mod unicast_ip;
