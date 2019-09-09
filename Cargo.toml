@@ -1,0 +1,13 @@
+[package]
+name = "iphelper"
+version = "0.1.0"
+authors = ["hankbao <hankbao84@gmail.com>"]
+edition = "2018"
+
+[dependencies.winapi]
+git = "https://github.com/hankbao/winapi-rs.git"
+branch = "iphlpapi-support"
+features = [
+    "netioapi",
+    "winerror",
+]
