@@ -11,14 +11,14 @@ use winapi::shared::ntdef::{HANDLE, PVOID};
 use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_UNSPEC};
 
 // #[derive(Default)]
-pub struct MibIpForwardRow2 {
+pub struct IpForward2 {
     pub inner: MIB_IPFORWARD_ROW2,
 }
 
-impl MibIpForwardRow2 {
+impl IpForward2 {
     /// `new` initializes a MIB_IPFORWARD_ROW2 structure with default values for an IP route entry on the local computer.
     pub fn new() -> Self {
-        MibIpForwardRow2::default()
+        IpForward2::default()
     }
 
     /// `create` creates a new IP route entry on the local computer.
@@ -32,9 +32,9 @@ impl MibIpForwardRow2 {
     }
 }
 
-impl Default for MibIpForwardRow2 {
+impl Default for IpForward2 {
     fn default() -> Self {
-        MibIpForwardRow2 {
+        IpForward2 {
             inner: unsafe {
                 let mut row: MIB_IPFORWARD_ROW2 = mem::zeroed();
                 InitializeIpForwardEntry(&mut row);
@@ -44,23 +44,23 @@ impl Default for MibIpForwardRow2 {
     }
 }
 
-pub struct MibIpForwardTable2(PMIB_IPFORWARD_TABLE2);
+pub struct IpForwardTable2(PMIB_IPFORWARD_TABLE2);
 
-impl MibIpForwardTable2 {
+impl IpForwardTable2 {
     /// `new` initializes a MIB_IPFORWARD_TABLE2 table pointed by a
     /// PMIB_IPFORWARD_TABLE2 according to the address family
     pub fn new(family: ADDRESS_FAMILY) -> io::Result<Self> {
         unsafe {
             let mut table: PMIB_IPFORWARD_TABLE2 = ptr::null_mut();
             crate::cvt_dword(GetIpForwardTable2(family, &mut table))?;
-            Ok(MibIpForwardTable2(table))
+            Ok(IpForwardTable2(table))
         }
     }
 
-    fn_table_iter! {MibIpForwardTable2Iter}
+    fn_table_iter! {IpForwardTable2Iter}
 }
 
-impl Drop for MibIpForwardTable2 {
+impl Drop for IpForwardTable2 {
     fn drop(&mut self) {
         unsafe {
             FreeMibTable(self.0 as *mut _);
@@ -69,12 +69,12 @@ impl Drop for MibIpForwardTable2 {
 }
 
 declare_table_iter! {
-    MibIpForwardTable2Iter,
-    MibIpForwardRow2,
+    IpForwardTable2Iter,
+    IpForward2,
     MIB_IPFORWARD_ROW2
 }
 
-type RouteChange2Context = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &MibIpForwardRow2)>;
+type RouteChange2Context = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &IpForward2)>;
 
 pub struct RouteChange2Notifier {
     handle: HANDLE,
@@ -84,7 +84,7 @@ pub struct RouteChange2Notifier {
 impl RouteChange2Notifier {
     pub fn new<F>(callback: F) -> io::Result<RouteChange2Notifier>
     where
-        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &MibIpForwardRow2),
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &IpForward2),
     {
         let callback: RouteChange2Context = Box::new(callback);
         let context =
@@ -122,11 +122,10 @@ unsafe extern "system" fn route_change2_callback(
     row: PMIB_IPFORWARD_ROW2,
     ntype: MIB_NOTIFICATION_TYPE,
 ) {
-    let mut callback: Box<RouteChange2Context> = Box::from_raw(context as *mut _);
     if !row.is_null() {
-        callback(ntype, &MibIpForwardRow2 { inner: *row });
+        let mut callback: Box<RouteChange2Context> = Box::from_raw(context as *mut _);
+        callback(ntype, &IpForward2 { inner: *row });
+        // we'll free context in RouteChange2Notifier::drop
+        mem::forget(callback);
     }
-
-    // we'll free context in RouteChange2Notifier::drop
-    mem::forget(callback);
 }

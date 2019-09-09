@@ -11,14 +11,14 @@ use winapi::shared::netioapi::{
 use winapi::shared::ntdef::{HANDLE, PVOID};
 use winapi::shared::ws2def::{AF_INET, AF_INET6, AF_UNSPEC};
 
-pub struct MibIpInterfaceRow {
+pub struct IpInterface {
     pub inner: MIB_IPINTERFACE_ROW,
 }
 
-impl MibIpInterfaceRow {
+impl IpInterface {
     /// `new` initializes the members of an MIB_IPINTERFACE_ROW entry with default values.
     pub fn new(luid: NET_LUID, family: u16) -> io::Result<Self> {
-        let mut row = MibIpInterfaceRow {
+        let mut row = IpInterface {
             inner: unsafe {
                 let mut row: MIB_IPINTERFACE_ROW = mem::zeroed();
                 InitializeIpInterfaceEntry(&mut row);
@@ -61,7 +61,7 @@ impl MibIpInterfaceRow {
     }
 }
 
-type IpInterfaceChangeContext = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &MibIpInterfaceRow)>;
+type IpInterfaceChangeContext = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &IpInterface)>;
 
 pub struct IpInterfaceChangeNotifier {
     handle: HANDLE,
@@ -71,7 +71,7 @@ pub struct IpInterfaceChangeNotifier {
 impl IpInterfaceChangeNotifier {
     pub fn new<F>(callback: F) -> io::Result<IpInterfaceChangeNotifier>
     where
-        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &MibIpInterfaceRow),
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &IpInterface),
     {
         let callback: IpInterfaceChangeContext = Box::new(callback);
         let context =
@@ -109,11 +109,10 @@ unsafe extern "system" fn ip_interface_callback(
     row: PMIB_IPINTERFACE_ROW,
     ntype: MIB_NOTIFICATION_TYPE,
 ) {
-    let mut callback: Box<IpInterfaceChangeContext> = Box::from_raw(context as *mut _);
     if !row.is_null() {
-        callback(ntype, &MibIpInterfaceRow { inner: *row });
+        let mut callback: Box<IpInterfaceChangeContext> = Box::from_raw(context as *mut _);
+        callback(ntype, &IpInterface { inner: *row });
+        // we'll free context in IpInterfaceChangeNotifier::drop
+        mem::forget(callback);
     }
-
-    // we'll free context in IpInterfaceChangeNotifier::drop
-    mem::forget(callback);
 }

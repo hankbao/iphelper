@@ -11,14 +11,14 @@ use winapi::shared::netioapi::{
 use winapi::shared::ntdef::{HANDLE, PVOID};
 use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_UNSPEC};
 
-pub struct MibUnicastIpAddressRow {
+pub struct UnicastIpAddress {
     pub inner: MIB_UNICASTIPADDRESS_ROW,
 }
 
-impl MibUnicastIpAddressRow {
+impl UnicastIpAddress {
     /// `new` initializes a MibUnicastIPAddressRow structure with default values for a unicast IP address entry on the local computer.
     pub fn new() -> Self {
-        MibUnicastIpAddressRow::default()
+        UnicastIpAddress::default()
     }
 
     /// `create` adds a new unicast IP address entry on the local computer.
@@ -32,9 +32,9 @@ impl MibUnicastIpAddressRow {
     }
 }
 
-impl Default for MibUnicastIpAddressRow {
+impl Default for UnicastIpAddress {
     fn default() -> Self {
-        MibUnicastIpAddressRow {
+        UnicastIpAddress {
             inner: unsafe {
                 let mut row: MIB_UNICASTIPADDRESS_ROW = mem::zeroed();
                 InitializeUnicastIpAddressEntry(&mut row);
@@ -44,23 +44,23 @@ impl Default for MibUnicastIpAddressRow {
     }
 }
 
-pub struct MibUnicastIpAddressTable(PMIB_UNICASTIPADDRESS_TABLE);
+pub struct UnicastIpAddressTable(PMIB_UNICASTIPADDRESS_TABLE);
 
-impl MibUnicastIpAddressTable {
+impl UnicastIpAddressTable {
     /// `new` initializes a MIB_UNICASTIPADDRESS_TABLE table pointed by a
     /// PMIB_UNICASTIPADDRESS_TABLE according to the address family
     pub fn new(family: ADDRESS_FAMILY) -> io::Result<Self> {
         unsafe {
             let mut table: PMIB_UNICASTIPADDRESS_TABLE = ptr::null_mut();
             crate::cvt_dword(GetUnicastIpAddressTable(family, &mut table))?;
-            Ok(MibUnicastIpAddressTable(table))
+            Ok(UnicastIpAddressTable(table))
         }
     }
 
-    fn_table_iter! {MibUnicastIpAddressTableIter}
+    fn_table_iter! {UnicastIpAddressTableIter}
 }
 
-impl Drop for MibUnicastIpAddressTable {
+impl Drop for UnicastIpAddressTable {
     fn drop(&mut self) {
         unsafe {
             FreeMibTable(self.0 as *mut _);
@@ -69,12 +69,12 @@ impl Drop for MibUnicastIpAddressTable {
 }
 
 declare_table_iter! {
-    MibUnicastIpAddressTableIter,
-    MibUnicastIpAddressRow,
+    UnicastIpAddressTableIter,
+    UnicastIpAddress,
     MIB_UNICASTIPADDRESS_ROW
 }
 
-type UnicastIpAddressChangeContext = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &MibUnicastIpAddressRow)>;
+type UnicastIpAddressChangeContext = Box<dyn FnMut(MIB_NOTIFICATION_TYPE, &UnicastIpAddress)>;
 
 pub struct UnicastIpAddressChangeNotifier {
     handle: HANDLE,
@@ -84,7 +84,7 @@ pub struct UnicastIpAddressChangeNotifier {
 impl UnicastIpAddressChangeNotifier {
     pub fn new<F>(callback: F) -> io::Result<UnicastIpAddressChangeNotifier>
     where
-        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &MibUnicastIpAddressRow),
+        F: 'static + FnMut(MIB_NOTIFICATION_TYPE, &UnicastIpAddress),
     {
         let callback: UnicastIpAddressChangeContext = Box::new(callback);
         let context =
@@ -122,11 +122,10 @@ unsafe extern "system" fn unicast_ip_address_callback(
     row: PMIB_UNICASTIPADDRESS_ROW,
     ntype: MIB_NOTIFICATION_TYPE,
 ) {
-    let mut callback: Box<UnicastIpAddressChangeContext> = Box::from_raw(context as *mut _);
     if !row.is_null() {
-        callback(ntype, &MibUnicastIpAddressRow { inner: *row });
+        let mut callback: Box<UnicastIpAddressChangeContext> = Box::from_raw(context as *mut _);
+        callback(ntype, &UnicastIpAddress { inner: *row });
+        // we'll free context in UnicastIpAddressChangeNotifier::drop
+        mem::forget(callback);
     }
-
-    // we'll free context in UnicastIpAddressChangeNotifier::drop
-    mem::forget(callback);
 }
