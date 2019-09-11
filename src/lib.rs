@@ -44,7 +44,7 @@ macro_rules! declare_table_iter {
 }
 
 pub mod if2;
-pub mod ip_forward;
+pub mod ip_forward2;
 pub mod ip_interface;
 pub mod unicast_ip;
 
