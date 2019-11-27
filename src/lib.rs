@@ -28,16 +28,15 @@ macro_rules! declare_table_iter {
             type Item = $item;
 
             fn next(&mut self) -> Option<Self::Item> {
-                if self.offset >= self.len {
-                    return None;
+                if self.offset < self.len {
+                    Some(unsafe {
+                        let val = *self.ptr.add(self.offset);
+                        self.offset += 1;
+                        $item { inner: val }
+                    })
+                } else {
+                    None
                 }
-
-                Some(unsafe {
-                    let val = *self.ptr;
-                    self.offset += 1;
-                    self.ptr.add(1);
-                    $item { inner: val }
-                })
             }
         }
     };
