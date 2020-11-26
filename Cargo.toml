@@ -5,8 +5,7 @@ authors = ["hankbao <hankbao84@gmail.com>"]
 edition = "2018"
 
 [dependencies.winapi]
-git = "https://github.com/hankbao/winapi-rs.git"
-branch = "iphlpapi-support"
+version = "0.3.9"
 features = [
     "netioapi",
     "winerror",
